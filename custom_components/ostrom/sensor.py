@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.const import CURRENCY_EURO, UnitOfEnergy
 from homeassistant.util import dt
+from homeassistant.util.unit_conversion import EnergyConverter
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import (
     StatisticData, StatisticMetaData, StatisticMeanType
@@ -360,6 +361,7 @@ class OstromDataCoordinator(DataUpdateCoordinator):
                 source=DOMAIN,
                 statistic_id=statistic_id,
                 unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+                unit_class=EnergyConverter.UNIT_CLASS,
             )
 
             try:
