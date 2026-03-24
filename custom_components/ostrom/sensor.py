@@ -217,12 +217,12 @@ class OstromDataCoordinator(DataUpdateCoordinator):
 
     async def _fetch_prices(self):
         """Fetch price data including future prices."""
-        now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+        now = datetime.now(ZoneInfo("UTC")).replace(minute=0, second=0, microsecond=0)
         url = f"https://{self._env_prefix}/spot-prices"
         
         headers = {"Authorization": f"Bearer {self._access_token}"}
         params = {
-            "startDate": (now).strftime("%Y-%m-%dT%H:00:00.000Z"),  
+            "startDate": now.strftime("%Y-%m-%dT%H:00:00.000Z"),  
             "endDate": (now + timedelta(days=1)).strftime("%Y-%m-%dT%H:00:00.000Z"),
             "resolution": "HOUR",
             "zip": self.zip_code
@@ -276,22 +276,20 @@ class OstromDataCoordinator(DataUpdateCoordinator):
             if end_datetime is None:
                 end_datetime = end_time
 
-        # Ensure both datetimes are in UTC
+        # Ensure both datetimes are in UTC for API call
         if start_datetime.tzinfo is None:
             start_datetime = start_datetime.replace(tzinfo=self.local_tz)
-        else:
-            start_datetime = start_datetime.astimezone(self.local_tz)
+        start_datetime_utc = start_datetime.astimezone(ZoneInfo("UTC"))
 
         if end_datetime.tzinfo is None:
             end_datetime = end_datetime.replace(tzinfo=self.local_tz)
-        else:
-            end_datetime = end_datetime.astimezone(self.local_tz)
+        end_datetime_utc = end_datetime.astimezone(ZoneInfo("UTC"))
 
         url = f"https://{self._env_prefix}/contracts/{self.contract_id}/energy-consumption"
         headers = {"Authorization": f"Bearer {self._access_token}"}
         params = {
-            "startDate": start_datetime.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "endDate": end_datetime.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "startDate": start_datetime_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "endDate": end_datetime_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "resolution": "HOUR",
         }
 
@@ -317,6 +315,7 @@ class OstromDataCoordinator(DataUpdateCoordinator):
         # Prepare statistics data - each hour is an individual measurement
         statistics = []
         sum_overall = initial_sum
+        seen_timestamps = set()
         
         for entry in hourly_data:
             if not isinstance(entry, dict) or "date" not in entry or "kWh" not in entry:
@@ -328,15 +327,22 @@ class OstromDataCoordinator(DataUpdateCoordinator):
                 if date_str.endswith("Z"):
                     date_str = date_str[:-1] + "+00:00"
                 timestamp = datetime.fromisoformat(date_str)
-                # Ensure timestamp has timezone info
+                # Ensure timestamp is in UTC for statistics
                 if timestamp.tzinfo is None:
-                    timestamp = timestamp.replace(tzinfo=self.local_tz)
+                    timestamp = timestamp.replace(tzinfo=ZoneInfo("UTC"))
                 else:
-                    timestamp = timestamp.astimezone(self.local_tz)
+                    timestamp = timestamp.astimezone(ZoneInfo("UTC"))
+
+                # Skip duplicate timestamps to prevent double-counting
+                ts_key = timestamp.replace(minute=0, second=0, microsecond=0)
+                if ts_key in seen_timestamps:
+                    continue
+                seen_timestamps.add(ts_key)
                     
                 # Each hour's consumption as individual statistic
                 kwh = cast(float, entry["kWh"])
-                sum_overall = sum_overall + (kwh * 1000)  # Convert kWh to Wh for statistics
+                wh = kwh * 1000  # Convert kWh to Wh for statistics
+                sum_overall = sum_overall + wh
                 
                 # Create statistic data point for this hour's consumption
                 # _LOGGER.debug("Creating statistic data point for %s: %s kWh : %s Wh", timestamp, kwh, sum_overall)
@@ -344,7 +350,7 @@ class OstromDataCoordinator(DataUpdateCoordinator):
                 statistics.append(
                     StatisticData(
                         start=timestamp,
-                        state=kwh,
+                        state=wh,  # State must be in Wh to match unit_of_measurement
                         sum=sum_overall,  # Use sum for energy consumption
                     )
                 )
@@ -381,7 +387,7 @@ class OstromDataCoordinator(DataUpdateCoordinator):
         while current_start < end_time:
             # Calculate chunk end time (max_days_per_chunk days after current_start or end_time, whichever is smaller)
             chunk_end = min(
-                (current_start + timedelta(days=max_days_per_chunk)).replace(hour=23, minute=59, second=59, microsecond=0), end_time
+                current_start + timedelta(days=max_days_per_chunk), end_time
             )
 
             try:
@@ -531,8 +537,8 @@ class OstromDataCoordinator(DataUpdateCoordinator):
                     None,
                     {"sum"},
                 )
-                consumption_sum = cast(float, stats[statistic_id][0]["sum"])
-                start_time = last_stats_time.astimezone(self.local_tz) - timedelta(hours=1)
+                consumption_sum = cast(float, stats[statistic_id][-1]["sum"])
+                start_time = last_stats_time.astimezone(self.local_tz) + timedelta(hours=1)
             
                 # Fetch data from last recorded time to end_time in chunks
                 consumption_data_all = await self._fetch_data_in_chunks(
