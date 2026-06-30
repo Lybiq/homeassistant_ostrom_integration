@@ -62,7 +62,8 @@ class OstromApi:
         if not token:
             token_status, token_json = await self._fetch_token(session)
             if token_status != 200 or 'access_token' not in token_json:
-                return OstromResult(ok=False, error=token_json.get('detail') or token_json.get('type') or 'token request failed', status_code=None, token_status_code=token_status)
+                detail = token_json.get('detail') or token_json.get('type') or 'token request failed'
+                return OstromResult(ok=False, error=detail, status_code=None, token_status_code=token_status)
             token = token_json['access_token']
             self._save_cached_token(token, token_json.get('expires_in', 3600))
         url = self.api_base + self.endpoint
@@ -73,4 +74,7 @@ class OstromApi:
                 payload = await resp.json()
             except Exception:
                 payload = {'text': await resp.text()}
-            return OstromResult(ok=resp.status < 400, data=payload, status_code=resp.status)
+            if resp.status >= 400:
+                detail = payload.get('detail') or payload.get('type') or f'HTTP {resp.status}'
+                return OstromResult(ok=False, data=payload, error=detail, status_code=resp.status)
+            return OstromResult(ok=True, data=payload, status_code=resp.status)
