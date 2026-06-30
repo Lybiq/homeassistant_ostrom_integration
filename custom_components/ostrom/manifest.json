@@ -1,12 +1,11 @@
 {
   "domain": "ostrom",
-  "name": "Ostrom Integration",
-  "documentation": "https://github.com/oliverwehrens/homeassistant_ostrom_integration",
-  "dependencies": [],
-  "codeowners": ["@oliverwehrens"],
-  "requirements": ["requests>=2.25.1"],
+  "name": "Ostrom Energy by 9rn.de",
+  "version": "0.1.0",
   "config_flow": true,
-  "version": "1.1.1",
+  "codeowners": ["@Lybiq"],
+  "documentation": "https://github.com/Lybiq/homeassistant_ostrom_integration",
+  "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "icon": "mdi:flash"
-} 
+  "requirements": ["aiohttp>=3.9.0"]
+}
