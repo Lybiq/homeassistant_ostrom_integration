@@ -1,27 +1,31 @@
-"""The Ostrom integration."""
-from __future__ import annotations
-
-import logging
-from homeassistant.config_entries import ConfigEntry
+"""Ostrom integration."""
+from homeassistant.config_entries import ConfigEntry, ConfigEntryAuthFailed, ConfigEntryError, ConfigEntryNotReady
 from homeassistant.core import HomeAssistant
 from homeassistant.const import Platform
 
-_LOGGER = logging.getLogger(__name__)
-DOMAIN = "ostrom"
-PLATFORMS = [Platform.SENSOR]
+from .const import DOMAIN
+from .coordinator import OstromCoordinator
+
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Ostrom from a config entry."""
+    coordinator = OstromCoordinator(hass, entry)
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception as err:
+        msg = str(err)
+        low = msg.lower()
+        if 'unauthorized' in low or 'auth' in low:
+            raise ConfigEntryAuthFailed(msg) from err
+        if 'active contract' in low:
+            raise ConfigEntryError(msg) from err
+        raise ConfigEntryNotReady(msg) from err
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the Ostrom component."""
-    _LOGGER.info("Setting up Ostrom integration")
-    hass.states.async_set("ostrom.status", "running")
-    hass.data.setdefault(DOMAIN, {})
-    return True 
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+    return unload_ok
