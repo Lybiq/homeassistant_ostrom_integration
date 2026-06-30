@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 import aiohttp
@@ -9,6 +10,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import OstromApi
 from .const import CONF_CLIENT_ID, CONF_CLIENT_SECRET, CONF_ENV, CONF_ENDPOINT, CONF_ZIP, DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 class OstromCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
@@ -20,7 +23,7 @@ class OstromCoordinator(DataUpdateCoordinator):
             entry.data.get(CONF_ENV, 'production'),
             entry.data.get(CONF_ENDPOINT, '/spot-prices'),
         )
-        super().__init__(hass, name=DOMAIN, update_interval=timedelta(hours=1))
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=timedelta(hours=1))
 
     async def _async_update_data(self):
         async with aiohttp.ClientSession() as session:
